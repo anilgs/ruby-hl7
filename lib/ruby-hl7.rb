@@ -21,7 +21,7 @@ require "stringio"
 require "date"
 
 module HL7 # :nodoc:
-  VERSION = "1.0.2"
+  VERSION = "1.0.3"
   def self.ParserConfig
     @parser_cfg ||= { :empty_segment_is_error => true }
   end
@@ -606,29 +606,55 @@ class HL7::Message::Segment
 
   def field_info( name ) #:nodoc:
     field_blk = nil
+    field_format = nil
     idx = name # assume we've gotten a fixnum
     unless name.kind_of?( Fixnum )
       fld_info = self.class.fields[ name ]
       idx = fld_info[:idx].to_i
       field_blk = fld_info[:blk]
+      field_format = fld_info[:format]
     end
 
-    [ idx, field_blk ]
+    [ idx, field_blk, field_format ]
   end
 
   def read_field( name ) #:nodoc:
-    idx, field_blk = field_info( name )
+    idx, field_blk, field_format = field_info(name)
     return nil unless idx
     return nil if (idx >= @elements.length)
 
     ret = @elements[ idx ]
     ret = ret.first if (ret.kind_of?(Array) && ret.length == 1)
     ret = field_blk.call( ret ) if field_blk
+
+    if field_format && name != :enc_chars
+
+      # parse a (possibly-repeating) composite field into array of hashes
+      fields = ret.split(@repeat_delim).collect do |part|
+        {}.tap do |field|
+          part.split(@item_delim).each_with_index do |value, i|
+            break if i >= field_format.size
+            field[field_format[i]] = value
+          end
+        end
+      end
+
+      # if no repeats, return as (possibly empty) hash
+      if fields.empty?
+        ret = {}
+      elsif fields.length == 1
+        ret = fields.first
+      else
+        ret = fields
+      end
+
+    end
+
     ret
   end
 
   def write_field( name, value ) #:nodoc:
-    idx, field_blk = field_info( name )
+    idx, field_blk, field_format = field_info( name )
     return nil unless idx
 
     if (idx >= @elements.length)
@@ -638,8 +664,28 @@ class HL7::Message::Segment
       @elements += missing
     end
 
-    value = value.first if (value && value.kind_of?(Array) && value.length == 1)
-    value = field_blk.call( value ) if field_blk
+    if value.kind_of?(Hash) and !field_format.nil?
+      builder = {}
+      elem = @elements[idx].split(@item_delim)
+      elem.each_with_index do |val, i|
+        builder[field_format[i]] = elem[i]
+      end
+
+      value.each_pair do |k, v|
+        builder[k.to_s] = v
+      end
+
+      value = []
+      field_format.each do |field|
+        value << builder[field.to_s] || ''
+      end
+      value.pop while !value.empty? && value.last.to_s == ''
+      value = value.join("^")
+    else
+      value = value.first if (value && value.kind_of?(Array) && value.length == 1)
+      value = field_blk.call( value ) if field_blk
+    end
+
     @elements[ idx ] = value.to_s
   end
 
@@ -676,6 +722,8 @@ class HL7::Message::Segment::Default < HL7::Message::Segment
   end
 end
 
+#TODO Find a better way to load the files
+load "segments/data_types.rb"
 # load our segments
 Dir["#{File.dirname(__FILE__)}/segments/*.rb"].each { |ext| load ext }
 
