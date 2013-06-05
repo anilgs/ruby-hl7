@@ -377,6 +377,7 @@ class HL7::Message::Segment
 
     @element_delim = (delims.kind_of?(Array) && delims.length>0) ? delims[0] : "|"
     @item_delim = (delims.kind_of?(Array) && delims.length>1) ? delims[1] : "^"
+    @repeat_delim  = (delims.kind_of?(Array) && delims.length>2) ? delims[2] : "~"
 
     if (raw_segment.kind_of? Array)
       @elements = raw_segment
