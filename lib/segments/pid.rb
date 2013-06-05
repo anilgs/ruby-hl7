@@ -21,8 +21,8 @@ class HL7::Message::Segment::PID < HL7::Message::Segment
   add_field :race
   add_field :address, {:format => HL7::Message::DataTypes.XAD}
   add_field :country_code
-  add_field :phone_home
-  add_field :phone_business
+  add_field :phone_home, {:format => HL7::Message::DataTypes.XTN}
+  add_field :phone_business, {:format => HL7::Message::DataTypes.XTN}
   add_field :primary_language
   add_field :marital_status
   add_field :religion
